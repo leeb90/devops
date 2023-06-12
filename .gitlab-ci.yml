@@ -1,0 +1,47 @@
+stages:
+  #- test
+  - build
+  - deploy
+
+image:
+  name: hashicorp/terraform:light
+  entrypoint:
+    - '/usr/bin/env'
+    - 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+
+.test:
+  stage: test
+  image: node:15
+  before_script:
+    - npm install
+  script:
+    - CI=true npm run test
+
+build:
+  stage: build
+  image: node:15
+  before_script:
+    - npm install
+    - npm run lint
+  script:
+    - npm run build
+  artifacts:
+    paths:
+      - build/*
+
+deploy:
+  stage: deploy
+  script:
+    - export TF_VAR_environment=$CI_COMMIT_REF_NAME
+    - export TF_VAR_name="this-bucket-will-be-deleted"
+    - cd terraform/s3-website
+    - terraform init -upgrade -backend-config="key=$CI_COMMIT_REF_NAME/terraform.tfstate" -backend-config="bucket=terraform-state-that-i-will-delete-later"
+    - terraform plan
+    - terraform apply --auto-approve
+    - cd ..
+    - cd ..
+    - apk update
+    - apk add py-pip
+    - pip install awscli
+    - aws --version
+    - aws s3 cp build s3://$CI_COMMIT_REF_NAME-this-bucket-will-be-deleted --recursive;
